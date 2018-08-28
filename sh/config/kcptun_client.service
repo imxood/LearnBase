@@ -1,0 +1,13 @@
+[Unit]
+Description=science internet
+After=network.target
+
+[Service]
+Type=forking
+Restart=always
+RestartSec=30
+ExecStart=/usr/bin/kcptun_client -r "45.76.154.144:30000" -l "127.0.0.1:10086" --mode fast3 --crypt none
+ExecReload=
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,4 @@
+#!/bin/bash
+
+path={{path}}
+echo "hello,the current path is ${path}!"

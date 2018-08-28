@@ -1,0 +1,14 @@
+#!/bin/bash
+
+sudo rm /etc/supervisord.d -rf
+sudo rm /etc/supervisord.conf -f
+
+# systemctl disable robot.service
+# #systemctl disable robot.web.service
+# systemctl disable robot.face.service
+
+# sudo rm -rf /etc/systemd/system/robot.*
+
+# sudo systemctl daemon-reload
+
+# echo "services uninstall success!"

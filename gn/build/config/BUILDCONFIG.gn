@@ -1,0 +1,20 @@
+# # 配置文件
+
+# ### 除设置其它build文件执行时的工作域外，该文件还设置参数、变量、默认值，等等。设置在该文件的值对所有build文件可见.
+# ### 每个工具链会执行一次该文件.
+
+
+# set_defaults("static_library") {
+#     configs = [ "//build:rtti_setup", "//build:extra_warnings" ]
+# }
+
+# # Set default toolchain only has an effect when run in the context of
+# # the default toolchain. Pick the right one according to the current CPU
+# # architecture.
+# if (target_cpu == "x64") {
+#   set_default_toolchain("//toolchains:64")
+# } else if (target_cpu == "x86") {
+#   set_default_toolchain("//toolchains:32")
+# }
+
+set_default_toolchain("//toolchains:gcc")

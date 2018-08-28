@@ -1,0 +1,3 @@
+/home/peak/develop/git/LearnMore/test/cmake/build/CMakeFiles/edit_cache.dir
+/home/peak/develop/git/LearnMore/test/cmake/build/CMakeFiles/rebuild_cache.dir
+/home/peak/develop/git/LearnMore/test/cmake/build/CMakeFiles/Test1.dir

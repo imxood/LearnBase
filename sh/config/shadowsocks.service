@@ -1,0 +1,14 @@
+[Unit]
+Description=science internet
+After=network.target
+
+[Service]
+Type=forking
+Restart=always
+RestartSec=30
+ExecStart=/usr/local/bin/ssserver -p 10086 -k imxood123456 -d start
+ExecReload=
+ExecStop=/usr/local/bin/ssserver -d stop
+
+[Install]
+WantedBy=multi-user.target

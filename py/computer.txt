@@ -1,0 +1,357 @@
+IF OBJECT_ID('Operate', 'U') IS NOT NULL
+    DROP TABLE Operate
+
+IF OBJECT_ID('Recharge', 'U') IS NOT NULL
+    DROP TABLE Recharge
+
+IF OBJECT_ID('Student', 'U') IS NOT NULL
+    DROP TABLE Student
+
+IF OBJECT_ID('Computer', 'U') IS NOT NULL
+    DROP TABLE Computer
+
+IF OBJECT_ID('Manager', 'U') IS NOT NULL
+    DROP TABLE Manager
+
+IF OBJECT_ID('ComputerRoom', 'U') IS NOT NULL
+    DROP TABLE ComputerRoom
+
+IF OBJECT_ID('Repair', 'U') IS NOT NULL
+    DROP TABLE Repair
+
+IF OBJECT_ID('Message', 'U') IS NOT NULL
+    DROP TABLE Message
+
+if (exists (select * from sys.objects where name = 'trigger_Recharge_insert'))
+    drop trigger trigger_Recharge_insert
+if (exists (select * from sys.objects where name = 'trigger_Operate_update'))
+    drop trigger trigger_Operate_update
+
+if (exists (select * from sys.objects where name = 'Operate_start'))
+    drop PROCEDURE Operate_start
+if (exists (select * from sys.objects where name = 'Operate_end'))
+    drop PROCEDURE Operate_end
+
+if (exists (select * from sys.objects where name = 'GetTimeString'))
+    drop function GetTimeString
+if (exists (select * from sys.objects where name = 'GetTimeDiffMinute'))
+    drop function GetTimeDiffMinute
+
+
+-- 1, 首先创建基本的表结构
+
+-- 学生表
+create table Student(
+    id int not null identity(1, 1) primary key,
+	name varchar(20) not null,
+	number varchar(20) not null,
+	sex  varchar(10) not null,
+	class varchar(30) not null,
+    major varchar(20) not null,
+	balance int not null
+)
+
+-- 计算机表
+create table Computer(
+    id int not null identity(1, 1) primary key,
+    number varchar(10) not null,
+    ip varchar(15) not null,
+    state varchar(20) not null,
+	computer_room_id int not null
+)
+
+-- 管理员表
+create table Manager(
+    id int not null identity(1, 1) primary key,
+	name varchar(20) not null,
+    sex varchar(10) not null,
+    age int not null,
+    id_number varchar(20) not null,
+	phone char(11) not null
+)
+
+-- 机房表
+create table ComputerRoom(
+    id int not null identity(1, 1) primary key,
+    name varchar(20) not null,
+    manager_id int not null
+)
+
+-- 维修表
+create table Repair(
+    id int not null identity(1, 1) primary key,
+    date varchar(20) not null,
+    worker_name varchar(30),
+	computer_id int not null,
+    manager_id int not null
+)
+
+-- 上机表
+create table Operate(
+    id int not null identity(1, 1) primary key,
+    date_start varchar(20) not null,
+    date_end varchar(20) not null,
+	student_id int not null,
+    computer_id int not null,
+    foreign key (student_id) references Student(id) on delete cascade
+)
+
+-- 充值表
+create table Recharge(
+    id int not null identity(1, 1) primary key,
+    money int not null,
+    date varchar(20) not null,
+	student_id int not null,
+    manager_id int not null,
+    foreign key (student_id) references Student(id) on delete cascade
+)
+
+-- 消息表
+create table Message(
+    id int not null identity(1, 1) primary key,
+    text varchar(100) not null,
+    date varchar(20) not null,
+	operate_id int not null
+)
+
+
+-- 2, 创建索引
+
+create index StudentIndex on Student(id)
+create index ComputerIndex on Computer(id)
+create index ManagerIndex on Manager(id)
+create index ComputerRoomIndex on ComputerRoom(id)
+create index RepairIndex on Repair(id)
+create index OperateIndex on Operate(id)
+create index RechargeIndex on Recharge(id)
+create index MessageIndex on Message(id)
+
+
+-- 2, 创建触发器, 存储过程, 函数
+    
+
+GO
+
+-- 新增一条充值记录时, 更新该学生的余额
+CREATE TRIGGER trigger_Recharge_insert
+    ON Recharge
+    AFTER INSERT
+AS
+BEGIN
+    DECLARE @student_id int;
+    DECLARE @money int;
+    DECLARE @count int;
+    select @student_id = student_id, @money = money
+    from inserted;
+    -- 从插入的数据中获得学生id和money
+    select @count = count(*)
+    from Student
+    where id = @student_id;
+    if (@count = 1) -- 如果找到了这个人则追加ta的余额
+    BEGIN
+        update Student set balance=@money + (select balance from Student where id=@student_id)
+            where id=@student_id
+    END
+END
+
+
+GO
+-- 计算格式化时间
+CREATE FUNCTION GetTimeString()
+RETURNS varchar(20)
+BEGIN
+    -- 先计算特定格式的当前时间
+    DECLARE @time_string VARCHAR(20)
+    
+    select @time_string=CONVERT(varchar,GETDATE(),120)
+
+    return @time_string
+END
+
+
+GO
+
+-- 计算分钟差值
+CREATE FUNCTION GetTimeDiffMinute(@date_start varchar(20), @date_end varchar(20))
+RETURNS NUMERIC(10, 0)
+BEGIN
+    -- 先计算特定格式的当前时间
+    DECLARE @time_diff_minute NUMERIC(10, 0)
+    
+    set @time_diff_minute = cast(datediff(n, @date_start, @date_end) as numeric(10,1))
+
+    return @time_diff_minute
+END
+
+
+GO
+
+-- 创建一个存储过程, 执行上机开始的操作: 记录date_start, 返回student_id
+-- 输入参数: 学号 计算机id, 输出参数: 上机id 问候语
+-- 返回值: 如果为0, 执行成功; 如果为1, 则学号不存在; 如果为2, 则余额不足1元,无法上机
+-- 每小时1块钱计费
+create procedure Operate_start(@student_number varchar(20), @computer_id int, @operate_id int output, @great_text varchar(100) output)
+as
+    DECLARE @UnitPrice INT
+    set @UnitPrice=1 -- 单价, 1块钱1小时, 可以修改,若是2块钱,则有3块钱,只能玩3/2=1小时, 余数自动舍去
+
+    DECLARE @count INT
+    DECLARE @balance int            -- 余额
+    DECLARE @date_start VARCHAR(20) -- 当前时间
+    DECLARE @student_id VARCHAR(20) -- 学生id
+
+    exec @date_start=GetTimeString 
+
+    -- 判断是否存在
+    select @count = count(*) from Student where number=@student_number
+
+    /*  */
+    -- 根据学号没有找到这名学生
+    if(@count=0)
+    BEGIN
+        set @great_text='学号错误, 请重新输入'
+        select 'count:' + CAST(@count as varchar(2))
+        return 1
+    END
+        
+    select @student_id=id, @balance=balance from Student where number=@student_number
+
+    if(@balance<2)
+    BEGIN
+        set @great_text='你的余额为' + cast(@balance AS varchar(100)) + '元, 不足以上机, 请即时充值'
+        return 2
+    END
+
+    -- 保存数据
+    insert into Operate (date_start, date_end, student_id, computer_id)
+        values(@date_start, '', @student_id, @computer_id)
+
+    -- 返回insert产生的自增id, 给上机结束时使用
+    select @operate_id=@@identity
+
+    set @great_text='你的余额为 ' + cast(@balance AS varchar(100)) + ' 元, 预计可使用 ' + cast((@balance / @UnitPrice) AS varchar(100)) + ' 小时, 请放心使用'
+    return 0
+
+GO
+
+-- 创建一个存储过程, 执行上机结束的操作: 记录date_end, 同时给出消息Message
+-- 输入参数: 上机id, 输出参数: 问候语
+create procedure Operate_end(@operate_id int, @great_text varchar(100) output)
+as
+    DECLARE @date_start varchar(20)
+    DECLARE @date_end varchar(20)
+    DECLARE @balance int
+
+    DECLARE @during_minutes NUMERIC(10, 0)
+
+    exec @date_end=GetTimeString
+
+    select @date_start=date_start from Operate where id=@operate_id
+
+    update Operate set date_end=@date_end where id=@operate_id
+
+    exec @during_minutes=GetTimeDiffMinute @date_start,@date_end
+
+    select @balance=balance from Student where id = (select student_id from Operate where id=@operate_id)
+
+    -- 返回问候语
+    set @great_text='你总共上机时间: ' + CAST(@during_minutes AS varchar(100)) + '分钟. 当前余额为: ' + cast(@balance as varchar(10)) + '元'
+
+
+
+GO
+
+-- 上机时, 查询该学生的余额
+CREATE TRIGGER trigger_Operate_update
+    ON Operate
+    AFTER update
+AS
+BEGIN
+    DECLARE @UnitPrice INT
+    set @UnitPrice=1 -- 单价, 1块钱1小时, 可以修改,若是2块钱,则有3块钱,只能玩3/2=1小时, 余数自动舍去
+
+    DECLARE @student_id int; -- 学生id
+    DECLARE @date_start varchar(20); -- 开始时间
+    DECLARE @date_end varchar(20);   -- 结束时间
+    DECLARE @date_during NUMERIC(10, 0); -- 总共用时, 单位分钟
+    DECLARE @date_hour NUMERIC(10, 0) -- 总共用时, 单位小时, 向上取整, 如: 2.3小时取3
+
+    -- 从插入的数据中获得学生id
+    select @student_id = student_id, @date_start = date_start, @date_end = date_end from inserted;
+
+    -- 下机, 更新余额
+    exec @date_during = GetTimeDiffMinute @date_start, @date_end
+    set @date_hour = ceiling(@date_during / 60.0)
+    
+    update Student set balance=cast((select balance from Student where id=@student_id) as int) - @date_hour * @UnitPrice where id=@student_id
+END
+
+GO
+-- 3, 数据初始化
+
+-- 学生数据
+insert into Student(name, number, sex, class, major, balance) VALUES ('学生A', '0001', '男', '软件1(1)', '软件', 0)
+insert into Student(name, number, sex, class, major, balance) VALUES ('学生B', '0002', '女', '软件1(1)', '软件', 0)
+insert into Student(name, number, sex, class, major, balance) VALUES ('学生C', '0003', '女', '软件1(1)', '软件', 0)
+
+-- 管理员数据
+insert into Manager(name, sex, age, id_number, phone) VALUES ('管理员A', '男', 28, '411323199001016950', '17011111234')
+insert into Manager(name, sex, age, id_number, phone) VALUES ('管理员B', '女', 26, '411323199201016950', '17011115678')
+
+-- 机房数据
+insert into ComputerRoom(name, manager_id) VALUES ('机房1', 1)
+insert into ComputerRoom(name, manager_id) VALUES ('机房2', 2)
+
+-- 计算机数据
+insert into Computer(number, ip, state, computer_room_id) VALUES ('C0001', '192.168.1.1', 'normal', 1)
+insert into Computer(number, ip, state, computer_room_id) VALUES ('C0002', '192.168.1.2', 'normal', 1)
+insert into Computer(number, ip, state, computer_room_id) VALUES ('C0003', '192.168.1.3', 'normal', 1)
+insert into Computer(number, ip, state, computer_room_id) VALUES ('C0004', '192.168.1.4', 'normal', 2)
+insert into Computer(number, ip, state, computer_room_id) VALUES ('C0005', '192.168.1.5', 'normal', 2)
+insert into Computer(number, ip, state, computer_room_id) VALUES ('C0006', '192.168.1.6', 'bad', 2)
+insert into Computer(number, ip, state, computer_room_id) VALUES ('C0007', '192.168.1.7', 'bad', 2)
+
+-- 维修数据
+insert into Repair(date, worker_name, computer_id, manager_id) VALUES ('201807011413', '维修员A', 6, 2)
+insert into Repair(date, worker_name, computer_id, manager_id) VALUES ('201807011513', '维修员A', 7, 2)
+
+-- 充值数据
+insert into Recharge(money, date, student_id, manager_id) VALUES (100, '201806281130', 1, 1)
+insert into Recharge(money, date, student_id, manager_id) VALUES (100, '201806281130', 2, 1)
+
+
+-- 测试上机, 学生A
+
+DECLARE @id int
+DECLARE @operate_id int
+DECLARE @great_text varchar(100)
+DECLARE @result int
+DECLARE @student_number VARCHAR(20)
+DECLARE @computer_id int
+
+-- 要测试的参数
+set @student_number='0001'
+set @computer_id=1
+
+exec @result = Operate_start @student_number,@computer_id,@operate_id output,@great_text output
+
+if(@result = 0)
+    select @operate_id as operate_id, @great_text as great_text
+if(@result = 1 or @result = 2)
+    select @great_text
+
+
+-- 测试下机
+/*
+DECLARE @great_text varchar(100)
+DECLARE @operate_id int
+
+-- 要测试的参数
+set @operate_id=1 --根据operate_start得到的operate_id
+
+exec Operate_end @operate_id, @great_text output
+select @great_text
+*/
+
+-- 测试
+-- select * from Student where balance > 0 --寻找余额大于0的学生

@@ -1,0 +1,18 @@
+#!/bin/bash
+
+sudo cp supervisord.d /etc -rf
+sudo cp supervisord.conf /etc -f
+
+#sudo update-rc.d supervisord defaults
+
+#sudo cp robot.service /etc/systemd/system/
+#sudo cp robot.web.service /etc/systemd/system/
+#sudo cp robot.face.service /etc/systemd/system/
+
+#systemctl enable robot.service
+#systemctl enable robot.web.service
+#systemctl enable robot.face.service
+
+#sudo systemctl daemon-reload
+
+echo "services install success!"

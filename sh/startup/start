@@ -1,0 +1,3 @@
+#!/bin/bash
+
+supervisord -u peak -c /etc/supervisord.conf
